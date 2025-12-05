@@ -1,0 +1,138 @@
+name: Workflow Dispath For Running AWS Terraform Code
+on:
+  workflow_dispatch:
+    inputs:
+      TERRAFORM:
+        description: 'Shall We Run Terraform Plan/Apply/Destroy/Drift?'     
+        required: true
+        default: 'PLAN'
+        type: choice
+        options:
+        - PLAN
+        - APPLY
+        - DESTROY
+        - DRIFT
+
+env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_REGION: "us-east-1"
+  TERRAFORM_DESTROY: "NO"
+
+jobs:
+  terraform-initiate:
+    if: ${{ github.event.inputs.TERRAFORM == 'APPLY' || github.event.inputs.TERRAFORM == 'PLAN' || github.event.inputs.TERRAFORM == 'DESTROY' || github.event.inputs.TERRAFORM == 'DRIFT' }}
+    name: 'Terraform Initialization'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./Customer_Alpha
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: 1.9.5
+      - name: Terraform Init, Format, Validate
+        run: terraform init && terraform fmt && terraform validate
+      - name: Creating Terraform Workspace
+        run: |
+          terraform workspace select dev || terraform workspace new dev
+          terraform workspace select prod || terraform workspace new prod
+          terraform workspace list
+
+  terraform-plan:
+    if: ${{ github.event.inputs.TERRAFORM == 'PLAN' }}
+    name: 'Terraform Plan'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./Customer_Alpha
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: 1.9.5
+      - name: Terraform Init, Format, Validate
+        run: terraform init && terraform fmt && terraform validate
+      - name: Print Branch Reference
+        run: echo The Current Branch Is $GITHUB_REF
+      - name: Terraform Plan
+        if: env.TERRAFORM_DESTROY == 'NO'
+        run: |
+          if [ ${GITHUB_REF} == 'refs/heads/development' ]; then
+            echo "Running Terraform Plan For Development Environment"
+            terraform workspace select dev
+            terraform plan --var-file=dev.tfvars
+          else
+            echo "Running Terraform Plan For Production Environment"
+            terraform workspace select prod
+            terraform plan --var-file=prod.tfvars
+          fi
+
+  terraform-apply:
+    if: ${{ github.event.inputs.TERRAFORM == 'APPLY' }}
+    name: 'Terraform Apply'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./Customer_Alpha
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: 1.9.5
+      - name: Terraform Init, Format, Validate
+        run: terraform init && terraform fmt && terraform validate
+      - name: Print Branch Reference
+        run: echo The Current Branch Is $GITHUB_REF
+      - name: Terraform Apply
+        if: env.TERRAFORM_DESTROY == 'NO'
+        run: |
+          if [ ${GITHUB_REF} == 'refs/heads/development' ]; then
+            echo "Running Terraform Plan For Development Environment"
+            terraform workspace select dev
+            terraform apply --var-file=dev.tfvars --auto-approve
+            terraform state list
+          else
+            echo "Running Terraform Plan For Production Environment"
+            terraform workspace select prod
+            terraform apply --var-file=prod.tfvars --auto-approve
+            terraform state list
+          fi
+
+  terraform-destroy:
+    if: ${{ github.event.inputs.TERRAFORM == 'DESTROY' }}
+    name: 'Terraform Destroy'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./Customer_Alpha
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: 1.9.5
+      - name: Terraform Init, Format, Validate
+        run: terraform init && terraform fmt && terraform validate
+      - name: Print Branch Reference
+        run: echo The Current Branch Is $GITHUB_REF
+      - name: Terraform Destroy
+        run: |
+          if [ ${GITHUB_REF} == 'refs/heads/development' ]; then
+            echo "Running Terraform Plan For Development Environment"
+            terraform workspace select dev
+            terraform destroy --var-file=dev.tfvars --auto-approve
+          else
+            echo "Running Terraform Plan For Production Environment"
+            terraform workspace select prod
+            terraform destroy --var-file=prod.tfvars --auto-approve
+          fi
+
